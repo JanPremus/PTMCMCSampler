@@ -627,10 +627,10 @@ class PTSampler(object):
             #Pick random chains for the swap
             while len(init_map) > 1:
                 r1 = random.randrange(0, len(init_map))
-                chain1 = l.pop(r1)
+                chain1 = init_map.pop(r1)
                 
                 r2 = random.randrange(0, len(init_map))
-                chain2 = l.pop(r2)
+                chain2 = init_map.pop(r2)
                
                 swap_map[chain1] = chain2
                 
