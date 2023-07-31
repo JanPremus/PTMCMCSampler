@@ -173,6 +173,7 @@ class PTSampler(object):
         HMCsteps=300,
         maxIter=None,
         thin=10,
+        nouts=1,
         i0=0,
         neff=100000,
         writeHotChains=False,
@@ -199,6 +200,7 @@ class PTSampler(object):
         self.burn = burn
         self.Tskip = Tskip
         self.thin = thin
+        self.nouts = nouts
         self.isave = isave
         self.Niter = Niter
         self.neff = neff
@@ -209,6 +211,7 @@ class PTSampler(object):
         self._lnprob = np.zeros(N)
         self._lnlike = np.zeros(N)
         self._chain = np.zeros((N, self.ndim))
+        self._addouts = np.zeros((N, self.nouts))
         self.naccepted = 0
         self.swapProposed = 0
         self.nswap_accepted = 0
@@ -302,7 +305,7 @@ class PTSampler(object):
             self._chainfile = open(self.fname, "w")
         self._chainfile.close()
 
-    def updateChains(self, p0, lnlike0, lnprob0, iter):
+    def updateChains(self, p0, lnlike0, lnprob0, addouts0, iter):
         """
         Update chains after jump proposals
 
@@ -317,6 +320,7 @@ class PTSampler(object):
             self._chain[ind, :] = p0
             self._lnlike[ind] = lnlike0
             self._lnprob[ind] = lnprob0
+            self._addouts[ind, :] = addouts0
 
         # write to file
         if iter % self.isave == 0 and iter > 1 and iter > self.resumeLength:
@@ -354,6 +358,7 @@ class PTSampler(object):
         HMCsteps=300,
         maxIter=None,
         thin=10,
+        nouts=1,
         i0=0,
         neff=100000,
         writeHotChains=False,
@@ -415,6 +420,7 @@ class PTSampler(object):
                 HMCsteps=HMCsteps,
                 maxIter=maxIter,
                 thin=thin,
+                nouts=nouts,
                 i0=i0,
                 neff=neff,
                 writeHotChains=writeHotChains,
@@ -425,7 +431,7 @@ class PTSampler(object):
 
         # if resuming, just start with first point in chain
         if self.resume and self.resumeLength > 0:
-            p0, lnlike0, lnprob0 = self.resumechain[0, :-4], self.resumechain[0, -3], self.resumechain[0, -4]
+            p0, lnlike0, lnprob0 = self.resumechain[0, 0:ndim], self.resumechain[0, -3], self.resumechain[0, -4]
         else:
             # compute prior
             lp = self.logp(p0)
@@ -437,11 +443,11 @@ class PTSampler(object):
 
             else:
 
-                lnlike0 = self.logl(p0)
+                lnlike0, addouts0 = self.logl(p0)
                 lnprob0 = 1 / self.temp * lnlike0 + lp
 
         # record first values
-        self.updateChains(p0, lnlike0, lnprob0, i0)
+        self.updateChains(p0, lnlike0, lnprob0, addouts0, i0)
 
         self.comm.barrier()
 
@@ -454,7 +460,7 @@ class PTSampler(object):
             iter += 1
             self.comm.barrier()  # make sure all processes are at the same iteration
             # call PTMCMCOneStep
-            p0, lnlike0, lnprob0 = self.PTMCMCOneStep(p0, lnlike0, lnprob0, iter)
+            p0, lnlike0, lnprob0, addouts0 = self.PTMCMCOneStep(p0, lnlike0, lnprob0, addouts0 iter)
 
             # compute effective number of samples
             if iter % 1000 == 0 and iter > 2 * self.burn and self.MPIrank == 0:
@@ -482,13 +488,14 @@ class PTSampler(object):
 
             runComplete = self.comm.bcast(runComplete, root=0)
 
-    def PTMCMCOneStep(self, p0, lnlike0, lnprob0, iter):
+    def PTMCMCOneStep(self, p0, lnlike0, lnprob0, addouts0, iter):
         """
         Function to carry out PTMCMC sampling.
 
         @param p0: Initial parameter vector
         @param lnlike0: Initial log-likelihood value
         @param lnprob0: Initial log probability value
+        @param addouts0: additional outputs from log-likelihood function
         @param iter: iteration number
 
         @return p0: next value of parameter vector after one MCMC step
@@ -560,7 +567,7 @@ class PTSampler(object):
 
             else:
 
-                newlnlike = self.logl(y)
+                newlnlike, newaddouts = self.logl(y)
                 newlnprob = 1 / self.temp * newlnlike + lp
 
             # hastings step
@@ -568,26 +575,27 @@ class PTSampler(object):
             if diff > np.log(self.stream.random()):
 
                 # accept jump
-                p0, lnlike0, lnprob0 = y, newlnlike, newlnprob
+                p0, lnlike0, lnprob0, addouts0 = y, newlnlike, newlnprob, newaddouts
 
                 # update acceptance counter
                 self.naccepted += 1
                 self.jumpDict[jump_name][1] += 1
         # temperature swap
         if iter % self.Tskip == 0 and self.nchain > 1:
-            p0, lnlike0, lnprob0 = self.PTswap(p0, lnlike0, lnprob0, iter)
+            p0, lnlike0, lnprob0, addouts0 = self.PTswap(p0, lnlike0, lnprob0, addouts0, iter)
 
-        self.updateChains(p0, lnlike0, lnprob0, iter)
+        self.updateChains(p0, lnlike0, lnprob0, addouts0, iter)
 
-        return p0, lnlike0, lnprob0
+        return p0, lnlike0, lnprob0, addouts0
 
-    def PTswap(self, p0, lnlike0, lnprob0, iter):
+    def PTswap(self, p0, lnlike0, lnprob0, addouts0, iter):
         """
-        Do parallel tempering swap.
+        Do parallel tempering swap. Based on Sambridge 2013
 
         @param p0: current parameter vector
         @param lnlike0: current log-likelihood
         @param lnprob0: current log posterior value
+        @param addouts0: current additional outputs
         @param iter: current iteration number
 
         @return swapReturn: 0 = no swap proposed,
@@ -604,14 +612,20 @@ class PTSampler(object):
 
         log_Ls = self.comm.gather(lnlike0, root=0)  # list of likelihoods from each chain
         p0s = self.comm.gather(p0, root=0)  # list of parameter arrays from each chain
+        addouts0s = self.comm.gather(addouts0, root=0) # list of additional outputs from each chain
 
         if self.MPIrank == 0:
+        
+            log_Ls_old = log_Ls
+            p0s_old = p0s
+            addouts0s_old = addouts0s
             # set up map to help keep track of swaps
             swap_map = list(range(self.nchain))
 
             # loop through and propose a swap at each chain (starting from hottest chain and going down in T)
             # and keep track of results in swap_map
             for swap_chain in reversed(range(self.nchain - 1)):
+
                 log_acc_ratio = -log_Ls[swap_map[swap_chain]] / Ts[swap_chain]
                 log_acc_ratio += -log_Ls[swap_map[swap_chain + 1]] / Ts[swap_chain + 1]
                 log_acc_ratio += log_Ls[swap_map[swap_chain + 1]] / Ts[swap_chain]
@@ -629,15 +643,17 @@ class PTSampler(object):
             for j in range(self.nchain):
                 p0s[j] = p0s[swap_map[j]]
                 log_Ls[j] = log_Ls[swap_map[j]]
+                addouts0s[j] = addouts0s[swap_map[j]]
 
         # broadcast the new samples and log_Ls to all chains
         p0 = self.comm.scatter(p0s, root=0)
         lnlike0 = self.comm.scatter(log_Ls, root=0)
+        addouts0 = self.comm.scatter(addouts0s, root=0)
 
         # calculate new posterior values
         lnprob0 = 1 / self.temp * lnlike0 + self.logp(p0)
 
-        return p0, lnlike0, lnprob0
+        return p0, lnlike0, lnprob0, addouts0
 
     def temperatureLadder(self, Tmin, Tmax=None, tstep=None):
         """
@@ -664,7 +680,7 @@ class PTSampler(object):
 
     def _writeToFile(self, iter):
         """
-        Function to write chain file. File has 3+ndim columns,
+        Function to write chain file. File has 3+ndim+len(addouts) columns,
         the first is log-posterior (unweighted), log-likelihood,
         and acceptance probability, followed by parameter values.
 
@@ -681,8 +697,10 @@ class PTSampler(object):
 
             self._chainfile.write("\t".join(["%22.22f" % (self._chain[ind, kk]) for kk in range(self.ndim)]))
             self._chainfile.write(
-                "\t%f\t%f\t%f\t%f\n" % (self._lnprob[ind], self._lnlike[ind], self.naccepted / iter, pt_acc)
+                "\t%f\t%f\t%f\t%f" % (self._lnprob[ind], self._lnlike[ind], self.naccepted / iter, pt_acc)
             )
+            self._chainfile.write("\t".join(["%22.22f" % (self._addouts[ind, kk]) for kk in range(self.nouts)]))
+            self._chainfile.write(" \n")
         self._chainfile.close()
 
         # write jump statistics files ####
