@@ -705,11 +705,12 @@ class PTSampler(object):
                 pt_acc = self.nswap_accepted / self.swapProposed
 
             self._chainfile.write("\t".join(["%22.22f" % (self._chain[ind, kk]) for kk in range(self.ndim)]))
-            self._chainfile.write(
-                "\t%f\t%f\t%f\t%f" % (self._lnprob[ind], self._lnlike[ind], self.naccepted / iter, pt_acc)
-            )
             self._chainfile.write("\t".join(["%22.22f" % (self._addouts[ind, kk]) for kk in range(self.nouts)]))
-            self._chainfile.write(" \n")
+            self._chainfile.write(
+                "\t%f\t%f\t%f\t%f\n" % (self._lnprob[ind], self._lnlike[ind], self.naccepted / iter, pt_acc)
+            )
+
+
         self._chainfile.close()
 
         # write jump statistics files ####
