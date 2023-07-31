@@ -461,7 +461,7 @@ class PTSampler(object):
             iter += 1
             self.comm.barrier()  # make sure all processes are at the same iteration
             # call PTMCMCOneStep
-            p0, lnlike0, lnprob0, addouts0 = self.PTMCMCOneStep(p0, lnlike0, lnprob0, addouts0 iter)
+            p0, lnlike0, lnprob0, addouts0 = self.PTMCMCOneStep(p0, lnlike0, lnprob0, addouts0, iter)
 
             # compute effective number of samples
             if iter % 1000 == 0 and iter > 2 * self.burn and self.MPIrank == 0:
