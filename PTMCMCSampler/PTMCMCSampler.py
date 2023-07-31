@@ -2,6 +2,7 @@ import os
 import sys
 import time
 
+import random
 import numpy as np
 
 from .nutsjump import HMCJump, MALAJump, NUTSJump
@@ -590,7 +591,7 @@ class PTSampler(object):
 
     def PTswap(self, p0, lnlike0, lnprob0, addouts0, iter):
         """
-        Do parallel tempering swap. Based on Sambridge 2013
+        Do parallel tempering swap. Based on Sambridge 2013 - swapping between random pairs of chains
 
         @param p0: current parameter vector
         @param lnlike0: current log-likelihood
@@ -620,30 +621,38 @@ class PTSampler(object):
             p0s_old = p0s
             addouts0s_old = addouts0s
             # set up map to help keep track of swaps
-            swap_map = list(range(self.nchain))
+            init_map = list(range(self.nchain))
+            swap_map = {}
+            
+            #Pick random chains for the swap
+            while len(init_map) > 1:
+                r1 = random.randrange(0, len(init_map))
+                chain1 = l.pop(r1)
+                
+                r2 = random.randrange(0, len(init_map))
+                chain2 = l.pop(r2)
+               
+                swap_map[chain1] = chain2
+                
 
-            # loop through and propose a swap at each chain (starting from hottest chain and going down in T)
-            # and keep track of results in swap_map
-            for swap_chain in reversed(range(self.nchain - 1)):
+            for chain1 in range(len(swap_map)):
 
-                log_acc_ratio = -log_Ls[swap_map[swap_chain]] / Ts[swap_chain]
-                log_acc_ratio += -log_Ls[swap_map[swap_chain + 1]] / Ts[swap_chain + 1]
-                log_acc_ratio += log_Ls[swap_map[swap_chain + 1]] / Ts[swap_chain]
-                log_acc_ratio += log_Ls[swap_map[swap_chain]] / Ts[swap_chain + 1]
+                log_acc_ratio = -log_Ls[chain1] / Ts[chain1]
+                log_acc_ratio += -log_Ls[swap_map[chain1]] / Ts[swap_map[chain1]]
+                log_acc_ratio += log_Ls[swap_map[chain1]] / Ts[chain1]
+                log_acc_ratio += log_Ls[chain1] / Ts[swap_map[chain1]]
 
                 acc_ratio = np.exp(log_acc_ratio)
                 if self.stream.uniform() <= acc_ratio:
-                    swap_map[swap_chain], swap_map[swap_chain + 1] = swap_map[swap_chain + 1], swap_map[swap_chain]
                     self.nswap_accepted += 1
                     self.swapProposed += 1
+                    
+                    p0s[chain1] = p0s_old[swap_map[chain1]]
+                    log_Ls[chain1] = log_Ls_old[swap_map[chain1]]
+                    addouts0s[chain1] = addouts0s_old[swap_map[chain1]]
+                
                 else:
                     self.swapProposed += 1
-
-            # loop through the chains and record the new samples and log_Ls
-            for j in range(self.nchain):
-                p0s[j] = p0s[swap_map[j]]
-                log_Ls[j] = log_Ls[swap_map[j]]
-                addouts0s[j] = addouts0s[swap_map[j]]
 
         # broadcast the new samples and log_Ls to all chains
         p0 = self.comm.scatter(p0s, root=0)
