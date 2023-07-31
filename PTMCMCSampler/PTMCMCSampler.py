@@ -635,12 +635,12 @@ class PTSampler(object):
                 swap_map[chain1] = chain2
                 
 
-            for chain1 in range(len(swap_map)):
+            for chain1, chain2 in swap_map.items():
 
                 log_acc_ratio = -log_Ls[chain1] / Ts[chain1]
-                log_acc_ratio += -log_Ls[swap_map[chain1]] / Ts[swap_map[chain1]]
-                log_acc_ratio += log_Ls[swap_map[chain1]] / Ts[chain1]
-                log_acc_ratio += log_Ls[chain1] / Ts[swap_map[chain1]]
+                log_acc_ratio += -log_Ls[chain2] / Ts[chain2]
+                log_acc_ratio += log_Ls[chain2] / Ts[chain1]
+                log_acc_ratio += log_Ls[chain1] / Ts[chain2]
 
                 acc_ratio = np.exp(log_acc_ratio)
                 if self.stream.uniform() <= acc_ratio:
