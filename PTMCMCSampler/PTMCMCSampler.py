@@ -445,6 +445,7 @@ class PTSampler(object):
             else:
 
                 lnlike0, addouts0 = self.logl(p0)
+                print (self.temp, lnlike0, lp)
                 lnprob0 = 1 / self.temp * lnlike0 + lp
 
         # record first values
