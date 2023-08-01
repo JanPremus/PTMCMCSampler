@@ -650,6 +650,9 @@ class PTSampler(object):
                     p0s[chain1] = p0s_old[swap_map[chain1]]
                     log_Ls[chain1] = log_Ls_old[swap_map[chain1]]
                     addouts0s[chain1] = addouts0s_old[swap_map[chain1]]
+                    p0s[swap_map[chain1]] = p0s_old[chain1]
+                    log_Ls[swap_map[chain1]] = log_Ls_old[chain1]
+                    addouts0s[swap_map[chain1]] = addouts0s_old[chain1]
                 
                 else:
                     self.swapProposed += 1
