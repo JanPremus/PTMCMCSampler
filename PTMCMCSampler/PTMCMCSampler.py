@@ -644,7 +644,7 @@ class PTSampler(object):
                     self.nswap_accepted += 1
                     self.swapProposed += 1
                     
-                    p0s[chain1], p0s[chain2] = p0s[chain2] p0s[chain1]
+                    p0s[chain1], p0s[chain2] = p0s[chain2], p0s[chain1]
                     log_Ls[chain1], log_Ls[chain2] = log_Ls[chain2], log_Ls[chain1]
                     addouts0s[chain1], addouts0s[chain2] = addouts0s[chain2], addouts0s[chain1]
                 
