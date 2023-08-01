@@ -617,9 +617,6 @@ class PTSampler(object):
 
         if self.MPIrank == 0:
         
-            log_Ls_old = log_Ls
-            p0s_old = p0s
-            addouts0s_old = addouts0s
             # set up map to help keep track of swaps
             init_map = list(range(self.nchain))
             swap_map = {}
@@ -647,12 +644,9 @@ class PTSampler(object):
                     self.nswap_accepted += 1
                     self.swapProposed += 1
                     
-                    p0s[chain1] = p0s_old[swap_map[chain1]]
-                    log_Ls[chain1] = log_Ls_old[swap_map[chain1]]
-                    addouts0s[chain1] = addouts0s_old[swap_map[chain1]]
-                    p0s[swap_map[chain1]] = p0s_old[chain1]
-                    log_Ls[swap_map[chain1]] = log_Ls_old[chain1]
-                    addouts0s[swap_map[chain1]] = addouts0s_old[chain1]
+                    p0s[chain1], p0s[chain2] = p0s[chain2] p0s[chain1]
+                    log_Ls[chain1], log_Ls[chain2] = log_Ls[chain2], log_Ls[chain1]
+                    addouts0s[chain1], addouts0s[chain2] = addouts0s[chain2], addouts0s[chain1]
                 
                 else:
                     self.swapProposed += 1
